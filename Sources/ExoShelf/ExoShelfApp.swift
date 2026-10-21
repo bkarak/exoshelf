@@ -68,6 +68,12 @@ struct GameMenuCommands: View {
         .keyboardShortcut("f", modifiers: [.command, .shift])
         .disabled(game == nil)
 
+        Button("Graphics…") {
+            model.graphicsSheetGame = model.selection
+        }
+        .keyboardShortcut("g", modifiers: [.command, .option])
+        .disabled(game == nil)
+
         Button("Show in Finder") {
             if let game { model.revealInFinder(game) }
         }

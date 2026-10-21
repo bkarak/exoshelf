@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import ExoShelfCore
+import SwiftUI
 
 /// Development aid, absent from release builds: with `EXOSHELF_DRIVER_DIR`
 /// set, the app reads commands from `<dir>/cmd` (one per line) and writes
@@ -8,7 +9,8 @@ import ExoShelfCore
 ///
 ///     select <shortcode>   query <text>   mode grid|list   sidebar all|installed
 ///     collection <id>      scope this|all   setup <collection>
-///     install <shortcode>  play <shortcode>   settings   shot <name>
+///     install <shortcode>  play <shortcode>   settings   settingstab <tag>
+///     graphics <shortcode>  closesheet   shot <name>
 @MainActor
 enum DebugDriver {
     static func start(model: AppModel) {
@@ -34,6 +36,19 @@ enum DebugDriver {
                     case "install": if let g = model.allGames.first(where: { $0.shortcode == arg }) { model.install(g) }
                     case "play": if let g = model.allGames.first(where: { $0.shortcode == arg }) { await model.play(g) }
                     case "settings": NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    case "settingstab": model.settingsTab = arg
+                    case "graphics": model.graphicsSheetGame = model.allGames.first { $0.shortcode == arg }?.id
+                    case "closesheet": model.graphicsSheetGame = nil
+                    case "rendersettings":
+                        render(GraphicsSettingsTab().environment(model), size: CGSize(width: 560, height: 1180),
+                               to: base.appendingPathComponent("\(arg).png"))
+                    case "rendersheet":
+                        // rendersheet <shortcode> <name>, optionally with "custom" to show the form.
+                        let p = arg.split(separator: " ").map(String.init)
+                        if p.count >= 2, let g = model.allGames.first(where: { $0.shortcode == p[0] }) {
+                            render(GameGraphicsSheet(game: g).environment(model), size: CGSize(width: 500, height: 700),
+                                   to: base.appendingPathComponent("\(p[1]).png"))
+                        }
                     case "wait": try? await Task.sleep(for: .seconds(Double(arg) ?? 1))
                     case "shot": snapshot(to: base.appendingPathComponent("\(arg).png"))
                     case "views": dumpViews(to: base.appendingPathComponent("\(arg).txt"))
@@ -58,6 +73,22 @@ enum DebugDriver {
         }
         for w in NSApp.windows where w.isVisible { if let v = w.contentView?.superview { walk(v, 0) } }
         try? out.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Lays a view out in a window placed off screen and snapshots it, so
+    /// windows the app cannot open from the background can still be checked.
+    static func render<V: View>(_ view: V, size: CGSize, to url: URL) {
+        let window = NSWindow(contentRect: NSRect(origin: CGPoint(x: -30000, y: -30000), size: size),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+        window.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if let v = window.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                v.cacheDisplay(in: v.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: url)
+            }
+            window.orderOut(nil)
+        }
     }
 
     static func snapshot(to url: URL) {

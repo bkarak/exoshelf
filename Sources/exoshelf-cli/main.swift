@@ -13,7 +13,9 @@ usage: exoshelf-cli <command> [arguments]
   search <words...>           search every collection that is set up
   info <game>                 show a game: title, shortcode or id, optionally as <collection>/<game>
   install <game>              download and unpack a game, and the ScummVM release it needs
-  play <game> [config]        run a game under DOSBox Staging or ScummVM
+  play <game> [config] [--upscale=<style>]
+                              run a game under DOSBox Staging or ScummVM
+  upscalers                   list the --upscale styles
   uninstall <game>            remove an installed game
   installed                   list installed games
   stats                       catalogue and cache figures
@@ -154,19 +156,39 @@ case "install":
     print("\nInstalled \(g.title) in \(Int(Date().timeIntervalSince(t0)))s.")
 
 case "play":
-    guard args.count > 1 else { fail("usage: play <game> [config]") }
+    // Flags may go anywhere after the game; the rest are positional.
+    let flags = args.dropFirst().filter { $0.hasPrefix("--") }
+    let positional = Array(args.dropFirst().filter { !$0.hasPrefix("--") })
+    guard let name = positional.first else { fail("usage: play <game> [config] [--upscale=<style>]") }
     let engine = await readyEngine()
-    let g = await find(args[1], in: engine)
+    let g = await find(name, in: engine)
+    var graphics = await engine.graphicsOverride(for: g) ?? GraphicsSettings()
+    if let flag = flags.first(where: { $0.hasPrefix("--upscale=") }) {
+        let value = String(flag.dropFirst("--upscale=".count))
+        guard let style = UpscaleStyle(rawValue: value) else { fail("unknown style \(value); see `exoshelf-cli upscalers`") }
+        graphics.style = style
+    }
     let dosbox = dosboxBinary()
     if ExoCollection.named(g.collection)?.launcher == .dosbox, dosbox == nil {
         fail("DOSBox Staging not found. Install it from https://www.dosbox-staging.org or `brew install --cask dosbox-staging-app`.")
     }
-    let options = LaunchOptions(dosbox: dosbox, scummvm: scummvmOverride(), configuration: args.count > 2 ? args[2] : nil)
+    let options = LaunchOptions(dosbox: dosbox, scummvm: scummvmOverride(), configuration: positional.count > 1 ? positional[1] : nil,
+                                graphics: graphics)
     let p: Process
     do { p = try await engine.launch(g, options: options) } catch { fail(String(describing: error)) }
     print("Running \(g.title) (pid \(p.processIdentifier)); log: \(await engine.logURL(for: g).path)")
     p.waitUntilExit()
     print("The emulator exited with status \(p.terminationStatus).")
+
+case "upscalers":
+    for family in UpscaleStyle.Family.allCases {
+        let styles = UpscaleStyle.allCases.filter { $0.family == family }
+        guard !styles.isEmpty else { continue }
+        print(family.rawValue + ":")
+        for st in styles {
+            print("  " + st.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0) + st.title + ". " + st.summary)
+        }
+    }
 
 case "uninstall":
     guard args.count > 1 else { fail("usage: uninstall <game>") }

@@ -2,14 +2,23 @@ import ExoShelfCore
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
-        TabView {
+        @Bindable var model = model
+        TabView(selection: $model.settingsTab) {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag("general")
             EmulatorSettings()
                 .tabItem { Label("Emulators", systemImage: "display") }
+                .tag("emulators")
+            GraphicsSettingsTab()
+                .tabItem { Label("Graphics", systemImage: "sparkles.tv") }
+                .tag("graphics")
             StorageSettings()
                 .tabItem { Label("Storage", systemImage: "internaldrive") }
+                .tag("storage")
         }
         .frame(width: 520)
         .scenePadding()
@@ -104,16 +113,11 @@ private struct EmulatorSettings: View {
             }
             Section {
                 Toggle("Start games in full screen", isOn: $model.preferences.fullscreen)
-                Picker("Display", selection: $model.preferences.shader) {
-                    Text("Sharp pixels").tag(DisplayShader.sharp)
-                    Text("CRT emulation").tag(DisplayShader.crt)
-                    Text("As configured").tag(DisplayShader.unchanged)
-                }
                 Picker("General MIDI music", selection: $model.preferences.generalMIDI) {
                     Text("SoundCanvas soundfont").tag(ConfPatcher.GeneralMIDI.soundfont)
                     Text("System MIDI port").tag(ConfPatcher.GeneralMIDI.systemPort)
                 }
-                Text("eXo leaves General MIDI to Windows' built-in synth. A Mac has none, so ExoShelf plays it through FluidSynth with eXo's SoundCanvas soundfont. Choose the MIDI port for an external synth. MT-32 games always use eXo's MT-32 ROMs. Under ScummVM, sharp pixels mean whole-number scaling and the music is the edition's own choice.")
+                Text("eXo leaves General MIDI to Windows' built-in synth. A Mac has none, so ExoShelf plays it through FluidSynth with eXo's SoundCanvas soundfont. Choose the MIDI port for an external synth. MT-32 games always use eXo's MT-32 ROMs. Under ScummVM the music is the edition's own choice. Upscaling and CRT emulation are under Graphics.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

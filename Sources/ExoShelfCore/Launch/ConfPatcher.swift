@@ -39,6 +39,23 @@ public enum ConfPatcher {
         return translateMIDI(rewritten, generalMIDISoundfont: soundfont)
     }
 
+    /// Drops `key=value` lines of the given sections (lowercase names
+    /// without brackets). `[autoexec]` is DOS commands and never touched.
+    public static func removing(_ keys: [String: Set<String>], from conf: String) -> String {
+        guard !keys.isEmpty else { return conf }
+        var section = ""
+        return conf.components(separatedBy: "\n").filter { line in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("[") {
+                section = t.trimmingCharacters(in: CharacterSet(charactersIn: "[] ")).lowercased()
+                return true
+            }
+            guard section != "autoexec", let eq = t.firstIndex(of: "="), let drop = keys[section] else { return true }
+            let key = t[..<eq].trimmingCharacters(in: .whitespaces).lowercased()
+            return !drop.contains(key)
+        }.joined(separator: "\n")
+    }
+
     /// Rewrites `.\` host paths in a game's batch file to `./`-relative ones
     /// with forward slashes. eXo's multi-disc `run.bat` mounts CD images that
     /// way, relative to the `eXo` folder DOSBox runs in.

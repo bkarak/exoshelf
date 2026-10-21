@@ -94,10 +94,39 @@ press ⌘↩, to play.
   choice is remembered per game.
 - **Downloads** resume after a quit: finished pieces are recorded next to the
   partial file.
+- **Graphics** (⌥⌘G for the selected game): upscaling and display, as a
+  default for every game in Settings → Graphics and per game from the
+  detail view; see below.
 - **Settings**: games folder, keep archives after unpacking, the emulators
   (including a ScummVM of your own in place of eXo's pinned releases), full
-  screen, display (sharp pixels, CRT emulation, or as configured), and how
-  General MIDI is played.
+  screen, graphics, and how General MIDI is played.
+
+## Graphics
+
+Every game can be upscaled. The default is Staging's sharp pixel scaling, the
+closest to eXo's own setup; a game with its own settings shows a filled TV
+icon in its detail view.
+
+| family | styles |
+|---|---|
+| pixels | sharp pixels, nearest neighbour |
+| pixel-art upscalers | xBR (LV3), xBR without blending, xBR 3D, Scale3x (AdvMAME), AdvInterp/HQ |
+| smoothing | Catmull-Rom, bilinear |
+| CRT monitor | Staging's adaptive CRT, CRT for the emulated card, arcade, arcade sharp |
+
+Alongside the upscaler: aspect ratio (4:3, square pixels, stretch), integer
+scaling, window size, dedithering (blends CGA/EGA checkerboard dithering into
+solid colour), deinterlacing for interlaced video scenes, CRT colour profiles
+(EBU, P22, SMPTE-C, Philips, Trinitron), the CGA palette (canonical, DGA16,
+Tandy, IBM 5153) and the monochrome monitor (amber, green, white, paperwhite).
+
+DOSBox Staging gets these as config settings after eXo's own; the launch
+drops eXo's `glshader` and `windowresolution` lines first, because Staging
+applies those deprecated keys after every config file and they would win.
+ScummVM gets its nearest equivalents on the command line: Edge for xBR,
+AdvMAME for Scale3x, HQ for AdvInterp, TV for the CRT styles, filtering for
+the smoothing ones, with a 2×–4× scale factor each scaler caps at what it
+supports. "As configured" leaves everything to eXo and your emulator defaults.
 
 ## Command line
 
@@ -111,12 +140,14 @@ exoshelf-cli search dune
 exoshelf-cli info "dune ii"
 exoshelf-cli install dune2
 exoshelf-cli play dune2
+exoshelf-cli play dune2 --upscale=xbr
 exoshelf-cli play "eXoScummVM/maniac mansion"
 ```
 
 A game is named by title, shortcode or id, optionally behind its collection
 (`eXoWin3x/3dmaze`); search covers every collection set up. `exoshelf-cli help`
-lists the rest, including `install-scummvm` and `zipls`/`zipget`, which read
+lists the rest, including `upscalers` (the `--upscale` styles),
+`install-scummvm` and `zipls`/`zipget`, which read
 any zip inside a torrent (`eXo/util/util.zip::EXTDOS.zip` for a nested one).
 `EXOSHELF_LIBRARY`, `EXOSHELF_SUPPORT` and `EXOSHELF_CACHES` override the
 folders below, for the app as well; `EXOSHELF_DOSBOX` and `EXOSHELF_SCUMMVM`
@@ -213,7 +244,8 @@ messages, the zip reader (zip64, nested, deflate, CRC, path traversal), the
 collections and LaunchBox parsing for each (eXoWin3x's folder spelling,
 eXoScummVM archives that differ from the catalogue in case), box-art
 matching, search, the move from the single-collection layout, config and
-batch rewriting, MIDI translation, and eXo's ScummVM launch index, edition
+batch rewriting, MIDI translation, the graphics settings for both emulators,
+and eXo's ScummVM launch index, edition
 menus and command lines, `--detect`'s table, part numbers and the targets
 that pin a first part. Nothing touches the network; the torrent client was
 exercised against the live eXoDOS, eXoWin3x and eXoScummVM swarms through

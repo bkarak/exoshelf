@@ -95,9 +95,9 @@ import Testing
 
         let vga = ScummVMChoice(edition: "Lure of the Temptress (DOS VGA)")
         let full = try ScummVMGame.plan(gameFolder: folder, choice: vga, index: Self.index, mt32: mt32, savePath: saves,
-                                        settings: .init(fullscreen: true, aspectRatio: false, pixelPerfect: false))
+                                        settings: .init(fullscreen: true, display: GraphicsSettings(style: .xbr).scummvmArguments()))
         #expect(full.arguments.first == "-f")
-        #expect(!full.arguments.contains("--aspect-ratio") && !full.arguments.contains("--stretch-mode=pixel-perfect"))
+        #expect(full.arguments.contains("--scaler=edge") && full.arguments.contains("--scale-factor=3"))
         #expect(full.runDirectory.lastPathComponent == "Lure of the Temptress (DOS VGA)")
     }
 

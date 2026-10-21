@@ -10,11 +10,23 @@ struct Preferences: Equatable {
     /// A ScummVM for every game; empty runs each with the release eXo pins.
     var scummvmPath: String
     var fullscreen: Bool
-    var shader: DisplayShader
+    /// Upscaling and display for every game without settings of its own.
+    var graphics: GraphicsSettings
     var generalMIDI: ConfPatcher.GeneralMIDI
     var keepArchives: Bool
 
     static let defaultLibrary = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Games/ExoShelf").path
+
+    /// Graphics settings, or the one-choice "shader" setting of earlier
+    /// versions (sharp, crt or unchanged).
+    private static func loadGraphics(_ d: UserDefaults) -> GraphicsSettings {
+        if let data = d.data(forKey: "graphics"), let g = try? JSONDecoder().decode(GraphicsSettings.self, from: data) { return g }
+        switch d.string(forKey: "shader") {
+        case "crt": return GraphicsSettings(style: .crt)
+        case "unchanged": return GraphicsSettings(style: .asConfigured)
+        default: return GraphicsSettings()
+        }
+    }
 
     static func load() -> Preferences {
         let d = UserDefaults.standard
@@ -23,7 +35,7 @@ struct Preferences: Equatable {
             dosboxPath: d.string(forKey: "dosboxPath") ?? "",
             scummvmPath: d.string(forKey: "scummvmPath") ?? "",
             fullscreen: d.bool(forKey: "fullscreen"),
-            shader: DisplayShader(rawValue: d.string(forKey: "shader") ?? "") ?? .sharp,
+            graphics: loadGraphics(d),
             generalMIDI: ConfPatcher.GeneralMIDI(rawValue: d.string(forKey: "generalMIDI") ?? "") ?? .soundfont,
             keepArchives: d.bool(forKey: "keepArchives")
         )
@@ -35,7 +47,7 @@ struct Preferences: Equatable {
         d.set(dosboxPath, forKey: "dosboxPath")
         d.set(scummvmPath, forKey: "scummvmPath")
         d.set(fullscreen, forKey: "fullscreen")
-        d.set(shader.rawValue, forKey: "shader")
+        d.set(try? JSONEncoder().encode(graphics), forKey: "graphics")
         d.set(generalMIDI.rawValue, forKey: "generalMIDI")
         d.set(keepArchives, forKey: "keepArchives")
     }
@@ -132,6 +144,12 @@ final class AppModel {
     private(set) var installs: [String: ActiveInstall] = [:]
     private var installTasks: [String: Task<Void, Never>] = [:]
     private(set) var running: Set<String> = []
+    /// Games with graphics settings of their own.
+    private(set) var customGraphics: Set<String> = []
+    /// The game whose graphics sheet is open.
+    var graphicsSheetGame: Game.ID?
+    /// The tab the Settings window shows.
+    var settingsTab = "general"
     private(set) var favorites: Set<String> = []
     private(set) var lastPlayed: [String: Date] = [:]
     private(set) var archiveSizes: [String: Int64] = [:]
@@ -249,6 +267,7 @@ final class AppModel {
         let shelf = await engine.shelfState()
         favorites = shelf.favorites
         lastPlayed = shelf.lastPlayed
+        customGraphics = await engine.gamesWithGraphicsOverrides()
         var states: [String: InstallState] = [:]
         // Only games with something on disk need a look at the file system.
         let fm = FileManager.default
@@ -420,6 +439,16 @@ final class AppModel {
         await engine.scummvmRelease(for: game, configuration: configuration)
     }
 
+    /// The game's own graphics settings, if it has any.
+    func graphicsOverride(for game: Game) async -> GraphicsSettings? {
+        await engine.graphicsOverride(for: game)
+    }
+
+    func setGraphicsOverride(_ settings: GraphicsSettings?, for game: Game) async {
+        await engine.setGraphicsOverride(settings, for: game)
+        if settings == nil { customGraphics.remove(game.id) } else { customGraphics.insert(game.id) }
+    }
+
     func play(_ game: Game, configuration: String? = nil) async {
         let launcher = ExoCollection.named(game.collection)?.launcher ?? .dosbox
         if launcher == .dosbox, dosbox == nil {
@@ -427,8 +456,9 @@ final class AppModel {
             return
         }
         let p = preferences
+        let graphics = await engine.graphicsOverride(for: game) ?? p.graphics
         let options = LaunchOptions(dosbox: dosbox, scummvm: scummvm, configuration: configuration ?? chosenConfiguration(for: game),
-                                    fullscreen: p.fullscreen, shader: p.shader, generalMIDI: p.generalMIDI)
+                                    fullscreen: p.fullscreen, graphics: graphics, generalMIDI: p.generalMIDI)
         // Already while ScummVM's --detect runs, a second or two.
         running.insert(game.id)
         do {

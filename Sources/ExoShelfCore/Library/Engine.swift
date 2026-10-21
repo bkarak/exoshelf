@@ -71,24 +71,6 @@ public enum InstallState: Sendable, Equatable {
     case installed
 }
 
-/// How the emulated screen is drawn.
-public enum DisplayShader: String, Sendable, CaseIterable, Codable {
-    /// Crisp, evenly scaled pixels, close to eXo's `normal2x` setups.
-    case sharp
-    /// Staging's adaptive CRT emulation.
-    case crt
-    /// Whatever the game's config or the user's Staging defaults say.
-    case unchanged
-
-    var configText: String? {
-        switch self {
-        case .sharp: return "[render]\nshader=sharp\n"
-        case .crt: return "[render]\nshader=crt-auto\n"
-        case .unchanged: return nil
-        }
-    }
-}
-
 public struct LaunchOptions: Sendable {
     /// DOSBox Staging, which runs eXoDOS and eXoWin3x.
     public var dosbox: URL?
@@ -98,18 +80,19 @@ public struct LaunchOptions: Sendable {
     /// `ScummVMChoice`; nil for eXo's default.
     public var configuration: String?
     public var fullscreen: Bool
-    public var shader: DisplayShader
+    /// Upscaler, aspect and the rest, for whichever emulator runs the game.
+    public var graphics: GraphicsSettings
     public var generalMIDI: ConfPatcher.GeneralMIDI
     /// Extra DOSBox config text applied last.
     public var extraConfig: String
 
     public init(dosbox: URL? = nil, scummvm: URL? = nil, configuration: String? = nil, fullscreen: Bool = false,
-                shader: DisplayShader = .sharp, generalMIDI: ConfPatcher.GeneralMIDI = .soundfont, extraConfig: String = "") {
+                graphics: GraphicsSettings = GraphicsSettings(), generalMIDI: ConfPatcher.GeneralMIDI = .soundfont, extraConfig: String = "") {
         self.dosbox = dosbox
         self.scummvm = scummvm
         self.configuration = configuration
         self.fullscreen = fullscreen
-        self.shader = shader
+        self.graphics = graphics
         self.generalMIDI = generalMIDI
         self.extraConfig = extraConfig
     }
@@ -397,6 +380,37 @@ public actor ExoEngine {
             return .partial(min(have, file.length))
         }
         return .notInstalled
+    }
+
+    // MARK: - Graphics
+
+    private var graphicsOverrides: [String: GraphicsSettings]?
+    private var graphicsURL: URL { paths.support.appendingPathComponent("graphics.json") }
+
+    /// Upscaling and display settings chosen for one game, which replace
+    /// the shelf-wide ones when it runs. Nil when the game has none.
+    public func graphicsOverride(for game: Game) -> GraphicsSettings? {
+        loadedGraphicsOverrides()[game.id]
+    }
+
+    /// Ids of the games that have settings of their own.
+    public func gamesWithGraphicsOverrides() -> Set<String> {
+        Set(loadedGraphicsOverrides().keys)
+    }
+
+    public func setGraphicsOverride(_ settings: GraphicsSettings?, for game: Game) {
+        var all = loadedGraphicsOverrides()
+        all[game.id] = settings
+        graphicsOverrides = all
+        try? FileManager.default.createDirectory(at: paths.support, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(all) { try? data.write(to: graphicsURL, options: .atomic) }
+    }
+
+    private func loadedGraphicsOverrides() -> [String: GraphicsSettings] {
+        if let g = graphicsOverrides { return g }
+        let loaded = (try? Data(contentsOf: graphicsURL)).flatMap { try? JSONDecoder().decode([String: GraphicsSettings].self, from: $0) } ?? [:]
+        graphicsOverrides = loaded
+        return loaded
     }
 
     // MARK: - Install
@@ -777,13 +791,14 @@ public actor ExoEngine {
 
         let launchDir = paths.support(c).appendingPathComponent("launch")
         try FileManager.default.createDirectory(at: launchDir, withIntermediateDirectories: true)
-        let patched = ConfPatcher.patchConfig(try ConfPatcher.readLatin1(confURL), workingDirectory: paths.workingDirectory, generalMIDI: options.generalMIDI)
+        let patched = ConfPatcher.removing(options.graphics.supersededKeys, from: ConfPatcher.patchConfig(
+            try ConfPatcher.readLatin1(confURL), workingDirectory: paths.workingDirectory, generalMIDI: options.generalMIDI))
         let patchedURL = launchDir.appendingPathComponent("\(game.shortcode).conf")
         try ConfPatcher.writeLatin1(patched, to: patchedURL)
         ConfPatcher.patchGameBatches(gameFolder: gameFolderURL(game), workingDirectory: paths.workingDirectory)
 
         var overrides = "[sdl]\nfullscreen=\(options.fullscreen ? "true" : "false")\n"
-        if let shader = options.shader.configText { overrides += shader }
+        overrides += options.graphics.dosboxConfig()
         if !options.extraConfig.isEmpty { overrides += "\n" + options.extraConfig + "\n" }
         let overridesURL = launchDir.appendingPathComponent("\(game.shortcode)-overrides.conf")
         try overrides.write(to: overridesURL, atomically: true, encoding: .utf8)
@@ -802,7 +817,7 @@ public actor ExoEngine {
         let folder = gameFolderURL(game)
         let saves = folder.appendingPathComponent("!saves")
         try FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
-        let settings = ScummVMGame.Settings(fullscreen: options.fullscreen, pixelPerfect: options.shader != .unchanged)
+        let settings = ScummVMGame.Settings(fullscreen: options.fullscreen, display: options.graphics.scummvmArguments())
         let plan = try ScummVMGame.plan(gameFolder: folder, choice: options.configuration.flatMap(ScummVMChoice.init(key:)),
                                         index: index, mt32: paths.mt32, savePath: saves, settings: settings)
         let release = ScummVM.release(forBuild: plan.build)

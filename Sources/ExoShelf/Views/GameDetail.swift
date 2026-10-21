@@ -69,6 +69,10 @@ struct GameDetail: View {
             scummvmRelease = await model.scummvmRelease(for: game, configuration: configuration.isEmpty ? nil : configuration)
         }
 
+        .sheet(isPresented: Binding(get: { model.graphicsSheetGame == game.id }, set: { if !$0 { model.graphicsSheetGame = nil } })) {
+            GameGraphicsSheet(game: game)
+                .environment(model)
+        }
         .confirmationDialog("Remove \(game.title)?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) { Task { await model.uninstall(game) } }
         } message: {
@@ -174,6 +178,14 @@ struct GameDetail: View {
                     }
                     .buttonStyle(.borderless)
                     .help(model.favorites.contains(game.id) ? "Remove from Favourites" : "Add to Favourites")
+                    Button {
+                        model.graphicsSheetGame = game.id
+                    } label: {
+                        Image(systemName: model.customGraphics.contains(game.id) ? "sparkles.tv.fill" : "sparkles.tv")
+                            .foregroundStyle(model.customGraphics.contains(game.id) ? Color.accentColor : .secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(model.customGraphics.contains(game.id) ? "Graphics: this game has its own settings" : "Graphics for this game")
                     if state != .notInstalled {
                         Menu {
                             if state == .installed {

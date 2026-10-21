@@ -123,17 +123,15 @@ public enum ScummVMGame {
     /// What `launch` needs besides the game.
     public struct Settings: Sendable {
         public var fullscreen = false
-        /// 4:3 aspect correction, as eXo's setup offers.
-        public var aspectRatio = true
-        /// Whole-number scaling, eXo's default; off leaves ScummVM's own.
-        public var pixelPerfect = true
+        /// Scaler, aspect and stretch options, from `GraphicsSettings`.
+        /// The default is eXo's: 4:3 correction and whole-number scaling.
+        public var display = ["--aspect-ratio", "--stretch-mode=pixel-perfect"]
         /// Turn subtitles on where the edition offers them (`subtitle.txt`).
         public var subtitles = true
 
-        public init(fullscreen: Bool = false, aspectRatio: Bool = true, pixelPerfect: Bool = true, subtitles: Bool = true) {
+        public init(fullscreen: Bool = false, display: [String]? = nil, subtitles: Bool = true) {
             self.fullscreen = fullscreen
-            self.aspectRatio = aspectRatio
-            self.pixelPerfect = pixelPerfect
+            if let display { self.display = display }
             self.subtitles = subtitles
         }
     }
@@ -181,10 +179,10 @@ public enum ScummVMGame {
         guard let entry = index.lookup(names) else { throw PlanError.notInIndex(gameFolder.lastPathComponent) }
 
         var args = [settings.fullscreen ? "-f" : "-F"]
-        if settings.aspectRatio { args.append("--aspect-ratio") }
         args += firstField(dirs, "video.txt")
         if settings.subtitles { args += firstField(dirs, "subtitle.txt") }
-        if settings.pixelPerfect { args.append("--stretch-mode=pixel-perfect") }
+        // After eXo's video options: on ScummVM's command line the last one wins.
+        args += settings.display
         if let p = firstField(dirs, "platform.txt").first, let code = platformCode(p) { args.append("--platform=\(code)") }
         args += soundArguments(pick.sound, dirs: dirs, mt32: mt32)
         args += ["--savepath=\(savePath.path)", "--path=\(runDir.path)", entry.gameID]
